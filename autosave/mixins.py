@@ -2,8 +2,15 @@ import time
 import json
 import functools
 import textwrap
-from datetime import datetime
-from urlparse import urlparse
+try:
+    import six
+except Exception:
+    pass
+from datetime import datetime, timezone
+try:
+    from urlparse import urlparse
+except ImportError:
+    from urllib.parse import urlparse
 
 from django import forms
 from django.contrib import messages
@@ -21,7 +28,10 @@ try:
 except ImportError:
     from django.forms.util import ErrorDict
 from django.http import HttpResponse, Http404
-from django.utils.encoding import force_unicode
+try:
+    from django.utils.encoding import force_unicode
+except ImportError:
+    from django.utils.encoding import force_text as force_unicode
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext as _
@@ -49,7 +59,6 @@ class AdminAutoSaveMixin(object):
             messages.info(request, mark_safe((
                 'Successfully loaded from your latest autosave. '
                 '<a href="">Click here</a> to %(refresh_action)s. '
-                '<a href="#delete-autosave" class="delete-autosave">[discard autosave]</a>'
                 ) % {
                     'refresh_action': 'view the original' if obj else 'clear the form',
                 }))
@@ -107,7 +116,7 @@ class AdminAutoSaveMixin(object):
                 # Make sure date modified time doesn't predate Unix-time.
                 if updated:
                     # I'm pretty confident they didn't do any Django autosaving in 1969.
-                    updated = max(updated, datetime(year=1970, month=1, day=1))
+                    updated = max(updated, datetime(year=1970, month=1, day=1, tzinfo=timezone.utc))
 
         if obj and not self.has_change_permission(request, obj):
             raise PermissionDenied
@@ -117,7 +126,7 @@ class AdminAutoSaveMixin(object):
         js_vars = {
             'autosave_url': autosave_url,
             'is_add_view': not(object_id),
-            'server_time_epoch': time.mktime(datetime.now().timetuple()),
+            'server_time_epoch': time.mktime(datetime.now(tz=timezone.utc).timetuple()),
             'last_updated_epoch': time.mktime(updated.timetuple()) if updated else None,
             'is_recovered_autosave': bool(request.GET.get('is_recovered')),
         }
@@ -173,7 +182,7 @@ class AdminAutoSaveMixin(object):
 
         return forms.Media(js=(
             reverse('admin:%s_%s_autosave_js' % info, args=[pk]) + get_params,
-            "autosave/js/autosave.js?v=3",
+            "autosave/js/autosave.js",
         ))
 
     def set_autosave_flag(self, request, response):
@@ -202,8 +211,12 @@ class AdminAutoSaveMixin(object):
             if 'is_retrieved_from_autosave' in request.POST:
                 get_params = u'?is_recovered=1'
             autosave_media = self.autosave_media(obj, get_params=get_params)
-            if isinstance(context['media'], basestring):
-                autosave_media = unicode(autosave_media)
+            try:
+                if isinstance(context['media'], basestring):
+                    autosave_media = unicode(autosave_media)
+            except NameError:
+                if isinstance(context['media'], six.string_types):
+                    autosave_media = unicode(autosave_media)
             context['media'] += autosave_media
         return super(AdminAutoSaveMixin, self).render_change_form(
                 request, context, add=add, obj=obj, **kwargs)

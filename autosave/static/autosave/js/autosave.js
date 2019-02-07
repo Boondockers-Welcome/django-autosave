@@ -25,8 +25,8 @@ var DjangoAutosave = (window.DjangoAutosave) ? DjangoAutosave : {};
         return null;
     }
 
-    function eraseCookie(name) {
-        createCookie(name,"",-1);
+    function eraseCookie(name,path) {
+        createCookie(name,"",-1,path);
     }
 
     $(document).ready(function() {
@@ -35,7 +35,16 @@ var DjangoAutosave = (window.DjangoAutosave) ? DjangoAutosave : {};
         // If this is not done, we will occasionally prompt the user erroneously
         // that they have changes in their autosave, when all that has happened is
         // that CKEDITOR has modified the value with html through its content filters.
-        if (typeof window.CKEDITOR !== 'undefined' && $('.django-ckeditor-textarea').length) {
+        if (typeof window.CKEDITOR !== 'undefined') {
+            if ($('.django-ckeditor-textarea').length) {
+                ckeditor_string = '.django-ckeditor-textarea';
+                ckeditor_data_field = 'ckeditorInstance';
+            } else if ($('.django-ckeditor-widget textarea').length) {
+                ckeditor_string = '.django-ckeditor-widget';
+                ckeditor_data_field = 'ckeditorInstance';
+            }
+        }
+        if (ckeditor_string !== 'undefined') {
             DjangoAutosave.onCKEditorLoad(DjangoAutosave.setup);
         } else {
             DjangoAutosave.setup();
@@ -49,18 +58,6 @@ var DjangoAutosave = (window.DjangoAutosave) ? DjangoAutosave : {};
         $(e.target).closest('li').fadeOut('fast');
         DjangoAutosave.save();
         setTimeout(DjangoAutosave.save, 5000);
-    });
-
-    $(document).on('click', '.delete-autosave', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (confirm("Are you sure you want to delete your autosave?")) {
-            $(e.target).closest('li').fadeOut('fast');
-            DjangoAutosave.clear();
-            if (DjangoAutosave.config.is_recovered_autosave) {
-                window.location.reload(true);
-            }
-        }
     });
 
     // Regenerates the form to submit old data, and posts it.
@@ -123,7 +120,7 @@ var DjangoAutosave = (window.DjangoAutosave) ? DjangoAutosave : {};
             // If "autosave_success" has been modified by the server, clear the
             // autosave.
             DjangoAutosave.clear();
-            eraseCookie("autosave_success");
+            eraseCookie("autosave_success", location.pathname);
         }
 
         var data = DjangoAutosave.retrieve();
@@ -163,7 +160,7 @@ var DjangoAutosave = (window.DjangoAutosave) ? DjangoAutosave : {};
         if (typeof window.CKEDITOR === 'undefined') {
             return callback();
         }
-        var $textareas = $(".django-ckeditor-textarea:not([id*='__prefix__'])");
+        var $textareas = $(ckeditor_string + ":not([id*='__prefix__'])");
 
         var totalEditors = $textareas.length;
         var readyHandlerCalled = {};
@@ -177,7 +174,7 @@ var DjangoAutosave = (window.DjangoAutosave) ? DjangoAutosave : {};
             default:
                 $textareas.each(function(i, textarea) {
                     var $textarea = $(textarea);
-                    var editor = $textarea.data('ckeditorInstance');
+                    var editor = $textarea.data(ckeditor_data_field);
                     if (editor && editor.status == 'ready') {
                         totalEditors--;
                     }
@@ -259,6 +256,9 @@ var DjangoAutosave = (window.DjangoAutosave) ? DjangoAutosave : {};
         var $fields = $form.find(':input:not([name="csrfmiddlewaretoken"])');
         var field_list = [];
         var $field, name;
+        for(var instanceName in CKEDITOR.instances) {
+            CKEDITOR.instances[instanceName].updateElement();
+        }
         for (var i = $fields.length - 1; i >= 0; i--) {
             $field = $fields.eq(i);
             name = $field.attr('name');
